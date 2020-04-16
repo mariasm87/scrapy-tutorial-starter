@@ -1,5 +1,7 @@
-Notes based on :    https://towardsdatascience.com/a-minimalist-end-to-end-scrapy-tutorial-part-i-11e350bcdec0
-                    https://docs.scrapy.org/en/latest/intro/tutorial.html 
+Notes based on :    
+https://towardsdatascience.com/a-minimalist-end-to-end-scrapy-tutorial-part-i-11e350bcdec0
+https://docs.scrapy.org/en/latest/intro/tutorial.html 
+
 # Creating a project
 The following command will create a "tutotial" directory with all the necessary contents to use scrapy:
 scrapy startproject tutorial
@@ -203,4 +205,106 @@ class QuotesSpider(scrapy.Spider):
 ```
 If you pass the tag=humor argument to this spider, you’ll notice that it will only visit URLs from the humor tag, such as http://quotes.toscrape.com/tag/humor
 
+# Items
+Based on : https://towardsdatascience.com/a-minimalist-end-to-end-scrapy-tutorial-part-ii-b917509b73f7
+## Scrapy architecture
+![alt text](https://miro.medium.com/max/1400/1*4pVKOGNE8MGgZbTgvDhKIQ.png "Scrapy architecture")
+
+The spider will parse the extracted data into Items and then the Items will go through Item Pipelines for further processing.
+## Define an item
+Open the auto-generated items.py file and update its content with the information provided at the yiel python command:
+´´´
+from scrapy.item import Item, Field
+
+
+class QuoteItem(Item):
+    quote_content = Field()
+    tags = Field()
+    author_name = Field()
+    author_birthday = Field()
+    author_bornlocation = Field()
+    author_bio = Field()
+´´´
+The extracted data from the spider can be loaded into an ItemLoader using:
+´´´ 
+from scrapy.loader import ItemLoader
+from tutorial.items import QuoteItem
+...
+        
+for quote in quotes:
+    loader = ItemLoader(item=QuoteItem(), selector=quote)
+    loader.add_css('quote_content', '.text::text')
+    loader.add_css('tags', '.tag::text')
+    quote_item = loader.load_item()
+´´´
+
+The main advantage of using an Itemloader is that ItemLoader enables pre/post processing functions to be nicely specified away from the spider code and each field of the Item can have different sets of pre/post processing functions for better code reuse.
+
+If for instance, the "quote_content" needs some further processing, the following code could be implemented on the item.py file:
+´´´ 
+from scrapy.item import Item, Field
+from scrapy.loader.processors import MapCompose
+
+def remove_quotes(text):
+    # strip the unicode quotes
+    text = text.strip(u'\u201c'u'\u201d')
+    return text
+
+
+
+class QuoteItem(Item):
+    quote_content = Field(
+        input_processor=MapCompose(remove_quotes)
+        )
+    tags = Field()
+    author_name = Field()
+    author_birthday = Field()
+    author_bornlocation = Field()
+    author_bio = Field()
+´´´
+MapCompose enables us to apply multiple processing functions to a field.
+
+### Practical example
+
+´´´ 
+import scrapy
+from scrapy.loader import ItemLoader
+from tutorial.items import QuoteItem
+
+class QuotesSpider(scrapy.Spider):
+    name = "quotes"
+    allowed_domains = ["toscrape.com"]
+    start_urls = ['http://quotes.toscrape.com/']
+
+
+    def parse(self, response):
+        self.logger.info('Parse function called on {}'.format(response.url))
+        # quotes = response.xpath("//div[@class='quote']")
+        quotes = response.css('div.quote')
+
+        for quote in quotes:
+            loader = ItemLoader(item=QuoteItem(), selector=quote)
+            # pay attention to the dot .// to use relative xpath
+            # loader.add_xpath('quote_content', ".//span[@class='text']/text()")
+            loader.add_css('quote_content', '.text::text')
+            # loader.add_xpath('author', './/small//text()')
+            loader.add_css('tags', '.tag::text')
+            quote_item = loader.load_item()
+            author_url = quote.css('.author + a::attr(href)').get()
+            # go to the author page and pass the current collected quote info
+            yield response.follow(author_url, self.parse_author, meta={'quote_item': quote_item})
+
+        # go to Next page
+        for a in response.css('li.next a'):
+            yield response.follow(a, self.parse)
+
+    def parse_author(self, response):
+        quote_item = response.meta['quote_item']
+        loader = ItemLoader(item=quote_item, response=response)
+        loader.add_css('author_name', '.author-title::text')
+        loader.add_css('author_birthday', '.author-born-date::text')
+        loader.add_css('author_bornlocation', '.author-born-location::text')
+        loader.add_css('author_bio', '.author-description::text')
+        yield loader.load_item()
+´´´
 
