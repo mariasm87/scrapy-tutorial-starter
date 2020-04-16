@@ -1,3 +1,5 @@
+Notes based on :    https://towardsdatascience.com/a-minimalist-end-to-end-scrapy-tutorial-part-i-11e350bcdec0
+                    https://docs.scrapy.org/en/latest/intro/tutorial.html 
 # Creating a project
 The following command will create a "tutotial" directory with all the necessary contents to use scrapy:
 scrapy startproject tutorial
